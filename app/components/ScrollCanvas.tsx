@@ -7,6 +7,7 @@ import { ScrollTrigger } from "gsap/ScrollTrigger";
 gsap.registerPlugin(ScrollTrigger);
 
 const TOTAL_FRAMES = 147;
+const SCROLL_DISTANCE = 5000; // px of scroll travel for the full sequence
 
 function getFrameSrc(index: number): string {
   const num = String(index).padStart(3, "0");
@@ -87,7 +88,7 @@ const STORIES: StoryBlock[] = [
 /* ──────────────────────── Component ──────────────────────── */
 
 export default function ScrollCanvas() {
-  const containerRef = useRef<HTMLDivElement>(null);
+  const sectionRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imagesRef = useRef<HTMLImageElement[]>([]);
   const frameIndexRef = useRef(0);
@@ -104,19 +105,13 @@ export default function ScrollCanvas() {
       document.body.style.overflow = "hidden";
       document.documentElement.style.overflow = "hidden";
     } else {
-      // Scroll to top before unlocking
       window.scrollTo(0, 0);
-
-      // Small delay to let GSAP set up before allowing scroll
       const timer = setTimeout(() => {
         document.body.style.overflow = "";
         document.documentElement.style.overflow = "";
         setShowContent(true);
-
-        // Force GSAP to recalculate all positions
         ScrollTrigger.refresh(true);
-      }, 300);
-
+      }, 400);
       return () => clearTimeout(timer);
     }
   }, [loaded]);
@@ -134,13 +129,10 @@ export default function ScrollCanvas() {
     const w = canvas.clientWidth;
     const h = canvas.clientHeight;
 
-    if (canvas.width !== w * dpr || canvas.height !== h * dpr) {
-      canvas.width = w * dpr;
-      canvas.height = h * dpr;
-      ctx.scale(dpr, dpr);
-    }
-
-    ctx.clearRect(0, 0, w, h);
+    // Reset canvas size (this clears + resets transform)
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+    ctx.scale(dpr, dpr);
 
     // Draw with cover-fit centering
     const imgRatio = img.naturalWidth / img.naturalHeight;
@@ -174,40 +166,8 @@ export default function ScrollCanvas() {
         loadedCount++;
         setLoadProgress(loadedCount / TOTAL_FRAMES);
         if (loadedCount === TOTAL_FRAMES) {
-          // All frames loaded — draw first frame then reveal
           requestAnimationFrame(() => {
-            // Ensure first frame is drawn on canvas
-            const canvas = canvasRef.current;
-            if (canvas) {
-              const ctx = canvas.getContext("2d");
-              if (ctx) {
-                const dpr = window.devicePixelRatio || 1;
-                const w = canvas.clientWidth;
-                const h = canvas.clientHeight;
-                canvas.width = w * dpr;
-                canvas.height = h * dpr;
-                ctx.scale(dpr, dpr);
-
-                const firstImg = images[0];
-                if (firstImg && firstImg.complete) {
-                  const imgRatio = firstImg.naturalWidth / firstImg.naturalHeight;
-                  const canvasRatio = w / h;
-                  let drawW: number, drawH: number, drawX: number, drawY: number;
-                  if (imgRatio > canvasRatio) {
-                    drawH = h;
-                    drawW = h * imgRatio;
-                    drawX = (w - drawW) / 2;
-                    drawY = 0;
-                  } else {
-                    drawW = w;
-                    drawH = w / imgRatio;
-                    drawX = 0;
-                    drawY = (h - drawH) / 2;
-                  }
-                  ctx.drawImage(firstImg, drawX, drawY, drawW, drawH);
-                }
-              }
-            }
+            drawFrame(0);
             setLoaded(true);
           });
         }
@@ -219,38 +179,49 @@ export default function ScrollCanvas() {
       images.push(img);
     }
     imagesRef.current = images;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /* ─── GSAP ScrollTrigger for frame sequence ─── */
+  /* ─── GSAP ScrollTrigger with PIN ─── */
   useEffect(() => {
-    if (!loaded || !showContent || !containerRef.current) return;
+    if (!loaded || !showContent || !sectionRef.current) return;
 
-    // Kill any stale triggers first
+    // Kill stale triggers
     ScrollTrigger.getAll().forEach((t) => t.kill());
 
-    // Small delay to ensure DOM is painted
-    const setupTimer = setTimeout(() => {
-      if (!containerRef.current) return;
-
+    const ctx = gsap.context(() => {
       const obj = { frame: 0 };
 
-      const tl = gsap.timeline({
+      gsap.to(obj, {
+        frame: TOTAL_FRAMES - 1,
+        snap: "frame",
+        ease: "none",
         scrollTrigger: {
-          trigger: containerRef.current,
-          start: "top top",
-          end: "bottom bottom",
-          scrub: 0.6,
+          trigger: sectionRef.current,
+          pin: true,          // PIN the section in place
+          scrub: 0.5,         // smooth scrub
+          end: `+=${SCROLL_DISTANCE}`,  // total scroll distance in px
           invalidateOnRefresh: true,
+          anticipatePin: 1,
           onUpdate: (self) => {
             const progress = self.progress;
 
-            // Update story visibility
+            // Draw the correct frame
+            const newIndex = Math.round(obj.frame);
+            if (newIndex !== frameIndexRef.current) {
+              frameIndexRef.current = newIndex;
+              drawFrame(newIndex);
+            }
+
+            // Update story overlay opacities
             const opacities: Record<string, number> = {};
 
             STORIES.forEach((story) => {
+              const fadeIn = 0.04;
+              const fadeOut = 0.04;
               const fadeInStart = story.startPct;
-              const fadeInEnd = fadeInStart + 0.03;
-              const fadeOutStart = story.endPct - 0.03;
+              const fadeInEnd = fadeInStart + fadeIn;
+              const fadeOutStart = story.endPct - fadeOut;
               const fadeOutEnd = story.endPct;
 
               let opacity = 0;
@@ -262,8 +233,7 @@ export default function ScrollCanvas() {
                 opacity = 1 - (progress - fadeOutStart) / (fadeOutEnd - fadeOutStart);
               }
 
-              opacity = Math.max(0, Math.min(1, opacity));
-              opacities[story.id] = opacity;
+              opacities[story.id] = Math.max(0, Math.min(1, opacity));
             });
 
             setStoryOpacity(opacities);
@@ -271,26 +241,11 @@ export default function ScrollCanvas() {
         },
       });
 
-      tl.to(obj, {
-        frame: TOTAL_FRAMES - 1,
-        ease: "none",
-        onUpdate: () => {
-          const newIndex = Math.round(obj.frame);
-          if (newIndex !== frameIndexRef.current) {
-            frameIndexRef.current = newIndex;
-            drawFrame(newIndex);
-          }
-        },
-      });
-
-      // Force a final refresh after setup
+      // Refresh after setup
       ScrollTrigger.refresh(true);
-    }, 100);
+    }, sectionRef);
 
-    return () => {
-      clearTimeout(setupTimer);
-      ScrollTrigger.getAll().forEach((t) => t.kill());
-    };
+    return () => ctx.revert();
   }, [loaded, showContent, drawFrame]);
 
   /* ─── Handle resize ─── */
@@ -354,144 +309,143 @@ export default function ScrollCanvas() {
         </div>
       </div>
 
-      {/* Scroll container */}
-      <div
-        ref={containerRef}
+      {/* Canvas section — gets PINNED by GSAP */}
+      <section
+        ref={sectionRef}
         id="overview"
-        className="canvas-container"
-        style={{ height: "500vh" }}
+        style={{
+          width: "100%",
+          height: "100vh",
+          position: "relative",
+          overflow: "hidden",
+          background: "#050505",
+        }}
       >
-        {/* Sticky canvas area */}
-        <div className="canvas-sticky">
-          <canvas
-            ref={canvasRef}
-            style={{
-              width: "100%",
-              height: "100%",
-              display: "block",
-              background: "#050505",
-            }}
-          />
+        <canvas
+          ref={canvasRef}
+          style={{
+            width: "100%",
+            height: "100%",
+            display: "block",
+            background: "#050505",
+          }}
+        />
 
-          {/* Radial glow behind the watch */}
-          <div
-            style={{
-              position: "absolute",
-              inset: 0,
-              background:
-                "radial-gradient(ellipse at 50% 50%, rgba(5,8,21,0.4) 0%, transparent 60%)",
-              pointerEvents: "none",
-            }}
-          />
+        {/* Radial glow behind the watch */}
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            background:
+              "radial-gradient(ellipse at 50% 50%, rgba(5,8,21,0.4) 0%, transparent 60%)",
+            pointerEvents: "none",
+          }}
+        />
 
-          {/* Story Overlays */}
-          {STORIES.map((story) => {
-            const opacity = storyOpacity[story.id] ?? 0;
-            if (opacity < 0.01) return null;
+        {/* Story Overlays */}
+        {STORIES.map((story) => {
+          const opacity = storyOpacity[story.id] ?? 0;
+          if (opacity < 0.01) return null;
 
-            return (
-              <div
-                key={story.id}
-                className={`story-overlay align-${story.align}`}
-                style={{
-                  opacity,
-                  transition: "none",
-                }}
-              >
-                <div className="story-content">
-                  {story.caption && (
-                    <div className="caption" style={{ marginBottom: "1rem", color: "#00D6FF" }}>
-                      {story.caption}
-                    </div>
-                  )}
-
-                  {story.id === "hero" ? (
-                    /* Hero has special styling */
-                    <>
-                      <h1
-                        className="heading-xl"
-                        style={{
-                          marginBottom: "0.75rem",
-                          textShadow: "0 0 80px rgba(0,80,255,0.15)",
-                        }}
-                      >
-                        {story.heading}
-                      </h1>
-                      {story.lines.map((line, i) => (
-                        <p
-                          key={i}
-                          className={i === 0 ? "subtitle" : "body-text"}
-                          style={{
-                            marginBottom: i < story.lines.length - 1 ? "0.5rem" : 0,
-                            maxWidth: i === 0 ? "none" : "420px",
-                            margin: i > 0 ? "0.5rem auto 0" : undefined,
-                          }}
-                        >
-                          {line}
-                        </p>
-                      ))}
-                    </>
-                  ) : story.id === "reassembly" ? (
-                    /* CTA section */
-                    <>
-                      <h2 className="heading-lg" style={{ marginBottom: "1rem" }}>
-                        {story.heading}
-                      </h2>
-                      {story.lines.map((line, i) => (
-                        <p key={i} className="body-text" style={{ marginBottom: "0.5rem" }}>
-                          {line}
-                        </p>
-                      ))}
-                      <div
-                        style={{
-                          display: "flex",
-                          gap: "1rem",
-                          marginTop: "2.5rem",
-                          justifyContent: "center",
-                          flexWrap: "wrap",
-                        }}
-                      >
-                        <a href="#discover" className="btn-primary">
-                          <span>Discover the Watch</span>
-                        </a>
-                        <a href="#specs" className="btn-secondary">
-                          View Specifications
-                        </a>
-                      </div>
-                    </>
-                  ) : (
-                    /* Standard sections */
-                    <>
-                      <h2 className="heading-lg" style={{ marginBottom: "0.75rem" }}>
-                        {story.heading}
-                      </h2>
-                      <div className="section-divider" />
-                      {story.lines.map((line, i) => (
-                        <p key={i} className="body-text" style={{ marginBottom: "0.5rem" }}>
-                          {line}
-                        </p>
-                      ))}
-                    </>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-
-          {/* Scroll indicator — only on hero */}
-          {(storyOpacity["hero"] ?? 0) > 0.3 && (
+          return (
             <div
-              className="scroll-indicator"
-              style={{ opacity: storyOpacity["hero"] ?? 0 }}
+              key={story.id}
+              className={`story-overlay align-${story.align}`}
+              style={{
+                opacity,
+                transition: "none",
+              }}
             >
-              <span className="caption" style={{ fontSize: "0.65rem" }}>
-                Scroll to explore
-              </span>
-              <div className="line" />
+              <div className="story-content">
+                {story.caption && (
+                  <div className="caption" style={{ marginBottom: "1rem", color: "#00D6FF" }}>
+                    {story.caption}
+                  </div>
+                )}
+
+                {story.id === "hero" ? (
+                  <>
+                    <h1
+                      className="heading-xl"
+                      style={{
+                        marginBottom: "0.75rem",
+                        textShadow: "0 0 80px rgba(0,80,255,0.15)",
+                      }}
+                    >
+                      {story.heading}
+                    </h1>
+                    {story.lines.map((line, i) => (
+                      <p
+                        key={i}
+                        className={i === 0 ? "subtitle" : "body-text"}
+                        style={{
+                          marginBottom: i < story.lines.length - 1 ? "0.5rem" : 0,
+                          maxWidth: i === 0 ? "none" : "420px",
+                          margin: i > 0 ? "0.5rem auto 0" : undefined,
+                        }}
+                      >
+                        {line}
+                      </p>
+                    ))}
+                  </>
+                ) : story.id === "reassembly" ? (
+                  <>
+                    <h2 className="heading-lg" style={{ marginBottom: "1rem" }}>
+                      {story.heading}
+                    </h2>
+                    {story.lines.map((line, i) => (
+                      <p key={i} className="body-text" style={{ marginBottom: "0.5rem" }}>
+                        {line}
+                      </p>
+                    ))}
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: "1rem",
+                        marginTop: "2.5rem",
+                        justifyContent: "center",
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      <a href="#discover" className="btn-primary">
+                        <span>Discover the Watch</span>
+                      </a>
+                      <a href="#specs" className="btn-secondary">
+                        View Specifications
+                      </a>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <h2 className="heading-lg" style={{ marginBottom: "0.75rem" }}>
+                      {story.heading}
+                    </h2>
+                    <div className="section-divider" />
+                    {story.lines.map((line, i) => (
+                      <p key={i} className="body-text" style={{ marginBottom: "0.5rem" }}>
+                        {line}
+                      </p>
+                    ))}
+                  </>
+                )}
+              </div>
             </div>
-          )}
-        </div>
-      </div>
+          );
+        })}
+
+        {/* Scroll indicator — only on hero */}
+        {(storyOpacity["hero"] ?? 0) > 0.3 && (
+          <div
+            className="scroll-indicator"
+            style={{ opacity: storyOpacity["hero"] ?? 0 }}
+          >
+            <span className="caption" style={{ fontSize: "0.65rem" }}>
+              Scroll to explore
+            </span>
+            <div className="line" />
+          </div>
+        )}
+      </section>
     </>
   );
 }
