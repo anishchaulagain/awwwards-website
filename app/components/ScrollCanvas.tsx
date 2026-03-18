@@ -93,11 +93,33 @@ export default function ScrollCanvas() {
   const frameIndexRef = useRef(0);
   const [loadProgress, setLoadProgress] = useState(0);
   const [loaded, setLoaded] = useState(false);
-  const [visibleStory, setVisibleStory] = useState<string | null>("hero");
+  const [showContent, setShowContent] = useState(false);
   const [storyOpacity, setStoryOpacity] = useState<Record<string, number>>({
     hero: 1,
   });
-  const rafRef = useRef<number>(0);
+
+  /* ─── Lock scroll during loading ─── */
+  useEffect(() => {
+    if (!loaded) {
+      document.body.style.overflow = "hidden";
+      document.documentElement.style.overflow = "hidden";
+    } else {
+      // Scroll to top before unlocking
+      window.scrollTo(0, 0);
+
+      // Small delay to let GSAP set up before allowing scroll
+      const timer = setTimeout(() => {
+        document.body.style.overflow = "";
+        document.documentElement.style.overflow = "";
+        setShowContent(true);
+
+        // Force GSAP to recalculate all positions
+        ScrollTrigger.refresh(true);
+      }, 300);
+
+      return () => clearTimeout(timer);
+    }
+  }, [loaded]);
 
   /* ─── Draw a frame to the canvas ─── */
   const drawFrame = useCallback((index: number) => {
@@ -152,9 +174,42 @@ export default function ScrollCanvas() {
         loadedCount++;
         setLoadProgress(loadedCount / TOTAL_FRAMES);
         if (loadedCount === TOTAL_FRAMES) {
-          setLoaded(true);
-          // Draw first frame once loaded
-          setTimeout(() => drawFrame(0), 50);
+          // All frames loaded — draw first frame then reveal
+          requestAnimationFrame(() => {
+            // Ensure first frame is drawn on canvas
+            const canvas = canvasRef.current;
+            if (canvas) {
+              const ctx = canvas.getContext("2d");
+              if (ctx) {
+                const dpr = window.devicePixelRatio || 1;
+                const w = canvas.clientWidth;
+                const h = canvas.clientHeight;
+                canvas.width = w * dpr;
+                canvas.height = h * dpr;
+                ctx.scale(dpr, dpr);
+
+                const firstImg = images[0];
+                if (firstImg && firstImg.complete) {
+                  const imgRatio = firstImg.naturalWidth / firstImg.naturalHeight;
+                  const canvasRatio = w / h;
+                  let drawW: number, drawH: number, drawX: number, drawY: number;
+                  if (imgRatio > canvasRatio) {
+                    drawH = h;
+                    drawW = h * imgRatio;
+                    drawX = (w - drawW) / 2;
+                    drawY = 0;
+                  } else {
+                    drawW = w;
+                    drawH = w / imgRatio;
+                    drawX = 0;
+                    drawY = (h - drawH) / 2;
+                  }
+                  ctx.drawImage(firstImg, drawX, drawY, drawW, drawH);
+                }
+              }
+            }
+            setLoaded(true);
+          });
         }
       };
       img.onerror = () => {
@@ -164,76 +219,85 @@ export default function ScrollCanvas() {
       images.push(img);
     }
     imagesRef.current = images;
-  }, [drawFrame]);
+  }, []);
 
   /* ─── GSAP ScrollTrigger for frame sequence ─── */
   useEffect(() => {
-    if (!loaded || !containerRef.current) return;
+    if (!loaded || !showContent || !containerRef.current) return;
 
-    // Animate frame index based on scroll
-    const obj = { frame: 0 };
+    // Kill any stale triggers first
+    ScrollTrigger.getAll().forEach((t) => t.kill());
 
-    const tl = gsap.timeline({
-      scrollTrigger: {
-        trigger: containerRef.current,
-        start: "top top",
-        end: "bottom bottom",
-        scrub: 0.5,
-        onUpdate: (self) => {
-          const progress = self.progress;
+    // Small delay to ensure DOM is painted
+    const setupTimer = setTimeout(() => {
+      if (!containerRef.current) return;
 
-          // Update story visibility
-          const opacities: Record<string, number> = {};
-          let currentVisible: string | null = null;
+      const obj = { frame: 0 };
 
-          STORIES.forEach((story) => {
-            const fadeInStart = story.startPct;
-            const fadeInEnd = fadeInStart + 0.03;
-            const fadeOutStart = story.endPct - 0.03;
-            const fadeOutEnd = story.endPct;
+      const tl = gsap.timeline({
+        scrollTrigger: {
+          trigger: containerRef.current,
+          start: "top top",
+          end: "bottom bottom",
+          scrub: 0.6,
+          invalidateOnRefresh: true,
+          onUpdate: (self) => {
+            const progress = self.progress;
 
-            let opacity = 0;
-            if (progress >= fadeInStart && progress <= fadeInEnd) {
-              opacity = (progress - fadeInStart) / (fadeInEnd - fadeInStart);
-            } else if (progress > fadeInEnd && progress < fadeOutStart) {
-              opacity = 1;
-            } else if (progress >= fadeOutStart && progress <= fadeOutEnd) {
-              opacity = 1 - (progress - fadeOutStart) / (fadeOutEnd - fadeOutStart);
-            }
+            // Update story visibility
+            const opacities: Record<string, number> = {};
 
-            opacity = Math.max(0, Math.min(1, opacity));
-            opacities[story.id] = opacity;
-            if (opacity > 0.1) currentVisible = story.id;
-          });
+            STORIES.forEach((story) => {
+              const fadeInStart = story.startPct;
+              const fadeInEnd = fadeInStart + 0.03;
+              const fadeOutStart = story.endPct - 0.03;
+              const fadeOutEnd = story.endPct;
 
-          setStoryOpacity(opacities);
-          setVisibleStory(currentVisible);
+              let opacity = 0;
+              if (progress >= fadeInStart && progress <= fadeInEnd) {
+                opacity = (progress - fadeInStart) / (fadeInEnd - fadeInStart);
+              } else if (progress > fadeInEnd && progress < fadeOutStart) {
+                opacity = 1;
+              } else if (progress >= fadeOutStart && progress <= fadeOutEnd) {
+                opacity = 1 - (progress - fadeOutStart) / (fadeOutEnd - fadeOutStart);
+              }
+
+              opacity = Math.max(0, Math.min(1, opacity));
+              opacities[story.id] = opacity;
+            });
+
+            setStoryOpacity(opacities);
+          },
         },
-      },
-    });
+      });
 
-    tl.to(obj, {
-      frame: TOTAL_FRAMES - 1,
-      ease: "none",
-      onUpdate: () => {
-        const newIndex = Math.round(obj.frame);
-        if (newIndex !== frameIndexRef.current) {
-          frameIndexRef.current = newIndex;
-          drawFrame(newIndex);
-        }
-      },
-    });
+      tl.to(obj, {
+        frame: TOTAL_FRAMES - 1,
+        ease: "none",
+        onUpdate: () => {
+          const newIndex = Math.round(obj.frame);
+          if (newIndex !== frameIndexRef.current) {
+            frameIndexRef.current = newIndex;
+            drawFrame(newIndex);
+          }
+        },
+      });
+
+      // Force a final refresh after setup
+      ScrollTrigger.refresh(true);
+    }, 100);
 
     return () => {
-      tl.kill();
+      clearTimeout(setupTimer);
       ScrollTrigger.getAll().forEach((t) => t.kill());
     };
-  }, [loaded, drawFrame]);
+  }, [loaded, showContent, drawFrame]);
 
   /* ─── Handle resize ─── */
   useEffect(() => {
     const handleResize = () => {
       drawFrame(frameIndexRef.current);
+      ScrollTrigger.refresh();
     };
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
@@ -242,36 +306,53 @@ export default function ScrollCanvas() {
   return (
     <>
       {/* Loading screen */}
-      {!loaded && (
-        <div className="loader">
-          <div
-            style={{
-              fontSize: "0.75rem",
-              fontWeight: 500,
-              letterSpacing: "0.15em",
-              textTransform: "uppercase",
-              color: "rgba(255,255,255,0.4)",
-            }}
-          >
-            Loading Experience
-          </div>
-          <div className="loader-bar">
-            <div
-              className="loader-fill"
-              style={{ width: `${loadProgress * 100}%` }}
-            />
-          </div>
-          <div
-            style={{
-              fontSize: "0.7rem",
-              color: "rgba(255,255,255,0.25)",
-              fontVariantNumeric: "tabular-nums",
-            }}
-          >
-            {Math.round(loadProgress * 100)}%
-          </div>
+      <div
+        className="loader"
+        style={{
+          opacity: loaded ? 0 : 1,
+          pointerEvents: loaded ? "none" : "auto",
+          transition: "opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1)",
+        }}
+      >
+        <div
+          style={{
+            fontSize: "1.1rem",
+            fontWeight: 600,
+            letterSpacing: "0.1em",
+            textTransform: "uppercase",
+            color: "rgba(255,255,255,0.9)",
+            marginBottom: "0.5rem",
+          }}
+        >
+          ANISH
         </div>
-      )}
+        <div
+          style={{
+            fontSize: "0.75rem",
+            fontWeight: 500,
+            letterSpacing: "0.15em",
+            textTransform: "uppercase",
+            color: "rgba(255,255,255,0.4)",
+          }}
+        >
+          Loading Experience
+        </div>
+        <div className="loader-bar">
+          <div
+            className="loader-fill"
+            style={{ width: `${loadProgress * 100}%` }}
+          />
+        </div>
+        <div
+          style={{
+            fontSize: "0.7rem",
+            color: "rgba(255,255,255,0.25)",
+            fontVariantNumeric: "tabular-nums",
+          }}
+        >
+          {Math.round(loadProgress * 100)}%
+        </div>
+      </div>
 
       {/* Scroll container */}
       <div
