@@ -43,7 +43,7 @@ const STORIES: StoryBlock[] = [
     startPct: 0.16,
     endPct: 0.38,
     align: "left",
-    caption: "Craftsmanship",
+    caption: "01 // Craftsmanship",
     heading: "Engineered with precision.",
     lines: [
       "Layered construction ensures strength and elegance.",
@@ -55,7 +55,7 @@ const STORIES: StoryBlock[] = [
     startPct: 0.40,
     endPct: 0.63,
     align: "right",
-    caption: "Movement",
+    caption: "02 // Movement",
     heading: "The art of movement.",
     lines: [
       "Hundreds of micro-components in perfect harmony.",
@@ -67,7 +67,7 @@ const STORIES: StoryBlock[] = [
     startPct: 0.65,
     endPct: 0.83,
     align: "left",
-    caption: "Materials",
+    caption: "03 // Materials",
     heading: "Crafted to endure.",
     lines: [
       "Sapphire clarity. Precision metal. Timeless materials.",
@@ -339,6 +339,22 @@ export default function ScrollCanvas() {
             background:
               "radial-gradient(ellipse at 50% 50%, rgba(5,8,21,0.4) 0%, transparent 60%)",
             pointerEvents: "none",
+            zIndex: 1,
+          }}
+        />
+
+        {/* Variable Blur Overlay for final reassembly step */}
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            background: "rgba(5, 5, 5, 0.5)",
+            backdropFilter: "blur(16px)",
+            WebkitBackdropFilter: "blur(16px)",
+            opacity: storyOpacity["reassembly"] ?? 0,
+            pointerEvents: "none",
+            zIndex: 2,
+            transition: "none",
           }}
         />
 
@@ -354,9 +370,14 @@ export default function ScrollCanvas() {
               style={{
                 opacity,
                 transition: "none",
+                zIndex: story.id === "hero" ? 5 : 10,
               }}
             >
-              <div className="story-content">
+              <div
+                className={`story-content ${
+                  story.id !== "hero" && story.id !== "reassembly" ? "glass-panel" : ""
+                }`}
+              >
                 {story.caption && (
                   <div className="caption" style={{ marginBottom: "1rem", color: "#00D6FF" }}>
                     {story.caption}
@@ -389,20 +410,20 @@ export default function ScrollCanvas() {
                     ))}
                   </>
                 ) : story.id === "reassembly" ? (
-                  <>
-                    <h2 className="heading-lg" style={{ marginBottom: "1rem" }}>
+                  <div style={{ textAlign: "center", maxWidth: "800px", margin: "0 auto" }}>
+                    <h2 className="heading-xl" style={{ marginBottom: "1.5rem" }}>
                       {story.heading}
                     </h2>
                     {story.lines.map((line, i) => (
-                      <p key={i} className="body-text" style={{ marginBottom: "0.5rem" }}>
+                      <p key={i} className="subtitle" style={{ marginBottom: "0.5rem" }}>
                         {line}
                       </p>
                     ))}
                     <div
                       style={{
                         display: "flex",
-                        gap: "1rem",
-                        marginTop: "2.5rem",
+                        gap: "1.5rem",
+                        marginTop: "3rem",
                         justifyContent: "center",
                         flexWrap: "wrap",
                       }}
@@ -414,7 +435,7 @@ export default function ScrollCanvas() {
                         View Specifications
                       </a>
                     </div>
-                  </>
+                  </div>
                 ) : (
                   <>
                     <h2 className="heading-lg" style={{ marginBottom: "0.75rem" }}>
