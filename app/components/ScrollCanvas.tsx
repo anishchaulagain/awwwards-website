@@ -96,7 +96,7 @@ export default function ScrollCanvas() {
   const [loaded, setLoaded] = useState(false);
   const [showContent, setShowContent] = useState(false);
   const [storyOpacity, setStoryOpacity] = useState<Record<string, number>>({
-    hero: 1,
+    hero: 0,
   });
 
   /* ─── Lock scroll during loading ─── */
@@ -217,7 +217,7 @@ export default function ScrollCanvas() {
             const opacities: Record<string, number> = {};
 
             STORIES.forEach((story) => {
-              const fadeIn = story.startPct === 0 ? 0 : 0.04;
+              const fadeIn = 0.04;
               const fadeOut = 0.04;
               const fadeInStart = story.startPct;
               const fadeInEnd = fadeInStart + fadeIn;
@@ -226,11 +226,11 @@ export default function ScrollCanvas() {
 
               let opacity = 0;
               if (progress >= fadeInStart && progress <= fadeInEnd) {
-                opacity = fadeIn === 0 ? 1 : (progress - fadeInStart) / fadeIn;
+                opacity = (progress - fadeInStart) / (fadeInEnd - fadeInStart);
               } else if (progress > fadeInEnd && progress < fadeOutStart) {
                 opacity = 1;
               } else if (progress >= fadeOutStart && progress <= fadeOutEnd) {
-                opacity = 1 - (progress - fadeOutStart) / fadeOut;
+                opacity = 1 - (progress - fadeOutStart) / (fadeOutEnd - fadeOutStart);
               }
 
               opacities[story.id] = Math.max(0, Math.min(1, opacity));
