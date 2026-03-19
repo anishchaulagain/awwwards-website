@@ -24,11 +24,11 @@ export default function Home() {
       {/* Scroll-linked image sequence + story overlays */}
       <ScrollCanvas />
 
-      {/* CTA Section */}
-      <CTASection />
-
       {/* Specifications */}
       <SpecsSection />
+
+      {/* CTA Section */}
+      <CTASection />
 
       {/* Footer */}
       <Footer />

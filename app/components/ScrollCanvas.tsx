@@ -204,6 +204,7 @@ export default function ScrollCanvas() {
           end: `+=${SCROLL_DISTANCE}`,  // total scroll distance in px
           invalidateOnRefresh: true,
           anticipatePin: 1,
+          refreshPriority: 10,
           onUpdate: (self) => {
             const progress = self.progress;
 
