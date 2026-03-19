@@ -10,8 +10,8 @@
   --text-muted: rgba(255, 255, 255, 0.35);
   --accent-blue: #0050FF;
   --accent-cyan: #00D6FF;
-  --font-heading: var(--font-playfair), 'Playfair Display', serif;
-  --font-sans: var(--font-montserrat), 'Montserrat', -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif;
+  --font-heading: var(--font-outfit), 'Outfit', sans-serif;
+  --font-sans: var(--font-outfit), 'Outfit', sans-serif;
 }
 
 @theme inline {
