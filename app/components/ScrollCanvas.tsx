@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
+import { motion } from "framer-motion";
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -43,7 +44,7 @@ const STORIES: StoryBlock[] = [
     startPct: 0.16,
     endPct: 0.38,
     align: "left",
-    caption: "01 // Craftsmanship",
+    caption: "Craftsmanship",
     heading: "Engineered with precision.",
     lines: [
       "Layered construction ensures strength and elegance.",
@@ -55,7 +56,7 @@ const STORIES: StoryBlock[] = [
     startPct: 0.40,
     endPct: 0.63,
     align: "right",
-    caption: "02 // Movement",
+    caption: "Movement",
     heading: "The art of movement.",
     lines: [
       "Hundreds of micro-components in perfect harmony.",
@@ -67,22 +68,22 @@ const STORIES: StoryBlock[] = [
     startPct: 0.65,
     endPct: 0.83,
     align: "left",
-    caption: "03 // Materials",
+    caption: "Materials",
     heading: "Crafted to endure.",
     lines: [
       "Sapphire clarity. Precision metal. Timeless materials.",
     ],
   },
-  {
-    id: "reassembly",
-    startPct: 0.85,
-    endPct: 1.0,
-    align: "center",
-    heading: "Every second, elevated.",
-    lines: [
-      "Built with purpose. Designed for legacy.",
-    ],
-  },
+  // {
+  //   id: "reassembly",
+  //   startPct: 0.85,
+  //   endPct: 1.0,
+  //   align: "center",
+  //   heading: "Every second, elevated.",
+  //   lines: [
+  //     "Built with purpose. Designed for legacy.",
+  //   ],
+  // },
 ];
 
 /* ──────────────────────── Component ──────────────────────── */
@@ -363,15 +364,22 @@ export default function ScrollCanvas() {
           const opacity = storyOpacity[story.id] ?? 0;
           if (opacity < 0.01) return null;
 
+          const isLeft = story.align === "left";
+          const isRight = story.align === "right";
+          const isMiddle = story.id !== "hero" && story.id !== "reassembly";
+          const xOffset = isLeft ? -120 : isRight ? 120 : 0;
+          const translateX = isMiddle ? xOffset * (1 - opacity) : 0;
+
           return (
-            <div
+            <motion.div
               key={story.id}
               className={`story-overlay align-${story.align}`}
               style={{
-                opacity,
-                transition: "none",
                 zIndex: story.id === "hero" ? 5 : 10,
               }}
+              initial={{ opacity: 0, x: isMiddle ? xOffset : 0 }}
+              animate={{ opacity, x: translateX }}
+              transition={{ type: "spring", stiffness: 250, damping: 30 }}
             >
               <div
                 className={`story-content ${
@@ -435,8 +443,7 @@ export default function ScrollCanvas() {
                         View Specifications
                       </a>
                     </div>
-                  </div>
-                ) : (
+                  </div>                ) : (
                   <>
                     <h2 className="heading-lg" style={{ marginBottom: "0.75rem" }}>
                       {story.heading}
@@ -450,7 +457,7 @@ export default function ScrollCanvas() {
                   </>
                 )}
               </div>
-            </div>
+            </motion.div>
           );
         })}
 
