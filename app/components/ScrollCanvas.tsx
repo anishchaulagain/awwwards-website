@@ -217,7 +217,7 @@ export default function ScrollCanvas() {
             const opacities: Record<string, number> = {};
 
             STORIES.forEach((story) => {
-              const fadeIn = 0.04;
+              const fadeIn = story.startPct === 0 ? 0 : 0.04;
               const fadeOut = 0.04;
               const fadeInStart = story.startPct;
               const fadeInEnd = fadeInStart + fadeIn;
@@ -226,11 +226,11 @@ export default function ScrollCanvas() {
 
               let opacity = 0;
               if (progress >= fadeInStart && progress <= fadeInEnd) {
-                opacity = (progress - fadeInStart) / (fadeInEnd - fadeInStart);
+                opacity = fadeIn === 0 ? 1 : (progress - fadeInStart) / fadeIn;
               } else if (progress > fadeInEnd && progress < fadeOutStart) {
                 opacity = 1;
               } else if (progress >= fadeOutStart && progress <= fadeOutEnd) {
-                opacity = 1 - (progress - fadeOutStart) / (fadeOutEnd - fadeOutStart);
+                opacity = 1 - (progress - fadeOutStart) / fadeOut;
               }
 
               opacities[story.id] = Math.max(0, Math.min(1, opacity));
